@@ -56,8 +56,15 @@ async function main(): Promise<void> {
   do {
     try {
       await bot.runCycle();
+      store.setError(null);
     } catch (err) {
-      log.error("사이클 실행 중 치명적 오류", String(err));
+      const msg = String(err);
+      log.error("사이클 실행 중 치명적 오류", msg);
+      store.setError(
+        msg.includes("IP address not allowed")
+          ? "토스에 등록되지 않은 IP입니다. 토스증권 > 설정 > Open API > IP 관리에서 현재 IP를 등록하세요."
+          : msg,
+      );
     }
     if (once || stopping) break;
     await sleep(config.cycleIntervalSec * 1000);

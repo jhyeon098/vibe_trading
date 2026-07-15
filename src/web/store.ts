@@ -26,6 +26,8 @@ export interface Snapshot {
   lastCycleAt: string | null;
   cycleCount: number;
   running: boolean;
+  /** 마지막 사이클에서 발생한 오류 메시지(정상이면 null) */
+  lastError: string | null;
   marketOpen: boolean | null;
   config: {
     rsiPeriod: number;
@@ -56,6 +58,7 @@ export class DashboardStore {
       lastCycleAt: null,
       cycleCount: 0,
       running: false,
+      lastError: null,
       marketOpen: null,
       boughtKrw: 0,
       buyingPower: null,
@@ -67,6 +70,11 @@ export class DashboardStore {
 
   beginCycle(): void {
     this.snap.running = true;
+  }
+
+  /** 사이클 오류 기록/해제. */
+  setError(msg: string | null): void {
+    this.snap.lastError = msg;
   }
 
   endCycle(patch: {

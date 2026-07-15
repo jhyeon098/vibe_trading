@@ -98,6 +98,8 @@
         </div>
       </header>
 
+      <div id="errbar" style="display:none; background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.45); color:#fca5a5; padding:12px 16px; border-radius:10px; margin-bottom:18px; font-size:14px;"></div>
+
       <div class="cards">
         <div class="card">
           <div class="label">당일 매수 누계</div>
@@ -169,6 +171,14 @@
         const modeEl = document.getElementById("mode");
         modeEl.textContent = s.mode;
         modeEl.className = "badge " + (s.mode === "LIVE" ? "live" : "dry");
+
+        const errbar = document.getElementById("errbar");
+        if (s.lastError) {
+          errbar.style.display = "block";
+          errbar.textContent = "⚠️ " + s.lastError;
+        } else {
+          errbar.style.display = "none";
+        }
 
         const mk = document.getElementById("market");
         const state = s.marketOpen === true ? ["on", "개장"] : s.marketOpen === false ? ["off", "폐장"] : ["unk", "상태 미상"];
