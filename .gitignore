@@ -1,0 +1,15 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Runtime logs / state
+logs/
+*.log
+state/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
