@@ -53,28 +53,28 @@ export class Bot {
       await this.ensureAccount();
 
       marketOpen = await this.api.isKrMarketOpen();
-      if (marketOpen === false) {
-        log.info("KRX 폐장 상태 — 주문 없이 이번 사이클 종료");
-        return;
-      }
+      // 폐장이어도 신호는 계산/표시한다. 실제 주문만 개장 중에 허용.
+      const tradingAllowed = marketOpen !== false;
+      if (!tradingAllowed) log.info("KRX 폐장 — 신호는 계산하되 주문은 보류합니다.");
 
-      const symbols = await this.api.getTopSymbols();
-      log.info(`감시 종목 ${symbols.length}개`, symbols);
-      if (symbols.length === 0) return;
+      const stocks = await this.api.getTopStocks();
+      log.info(`감시 종목 ${stocks.length}개`, stocks.map((s) => s.symbol));
+      if (stocks.length === 0) return;
 
       holdings = await this.safe("holdings", () => this.api.getHoldings(), new Map<string, number>());
       buyingPower = await this.safe("buying-power", () => this.api.getBuyingPower(), null);
 
       let positionCount = holdings.size;
 
-      for (const symbol of symbols) {
+      for (const { symbol, price: rankPrice } of stocks) {
         const held = holdings.has(symbol);
         try {
-          const closes = await this.api.getDailyCloses(symbol, this.config.rsiPeriod + 1);
+          // Wilder RSI 는 워밍업이 필요하므로 기간의 몇 배를 조회
+          const closes = await this.api.getDailyCloses(symbol, this.config.rsiPeriod * 4 + 1);
           const rsi = computeRSI(closes, this.config.rsiPeriod);
           if (rsi === null) {
             log.debug(`${symbol}: 데이터 부족으로 RSI 계산 불가`);
-            rows.push({ symbol, rsi: null, signal: "SKIP", price: null, held });
+            rows.push({ symbol, rsi: null, signal: "SKIP", price: rankPrice, held });
             continue;
           }
 
@@ -85,17 +85,22 @@ export class Bot {
           });
           log.debug(`${symbol}: RSI=${rsi.toFixed(1)} → ${signal}${held ? " (보유)" : ""}`);
 
-          let price: number | null = null;
-          if (signal === "BUY") {
-            price = await this.handleBuy(symbol, rsi, positionCount, buyingPower);
-            if (price !== null && this.tracker.hasBought(symbol)) positionCount++;
-          } else if (signal === "SELL") {
-            price = await this.handleSell(symbol, rsi, holdings.get(symbol)!);
+          // 주문 실행 시엔 신선한 현재가를 쓰고, 없으면 랭킹 가격으로 폴백
+          let price = rankPrice;
+          if (tradingAllowed && signal !== "HOLD") {
+            price = (await this.api.getPrice(symbol)) ?? rankPrice;
+          }
+
+          if (tradingAllowed && signal === "BUY" && price !== null) {
+            const bought = await this.handleBuy(symbol, rsi, price, positionCount, buyingPower);
+            if (bought) positionCount++;
+          } else if (tradingAllowed && signal === "SELL" && price !== null) {
+            await this.handleSell(symbol, rsi, price, holdings.get(symbol)!);
           }
           rows.push({ symbol, rsi, signal, price, held });
         } catch (err) {
           log.warn(`${symbol} 처리 중 오류 — 스킵`, String(err));
-          rows.push({ symbol, rsi: null, signal: "SKIP", price: null, held });
+          rows.push({ symbol, rsi: null, signal: "SKIP", price: rankPrice, held });
         }
       }
 
@@ -112,22 +117,19 @@ export class Bot {
     }
   }
 
-  /** 매수 처리. 실행에 사용한 현재가를 반환(스킵 시 null). */
+  /** 매수 처리. 실제 매수가 실행됐으면 true. */
   private async handleBuy(
     symbol: string,
     rsi: number,
+    price: number,
     positionCount: number,
     buyingPower: number | null,
-  ): Promise<number | null> {
-    const price = await this.api.getPrice(symbol);
-    if (price === null || price <= 0) {
-      log.warn(`${symbol}: 현재가 조회 실패 — 매수 스킵`);
-      return null;
-    }
+  ): Promise<boolean> {
+    if (price <= 0) return false;
     const quantity = Math.floor(this.config.orderAmountKrw / price);
     if (quantity < 1) {
       log.info(`${symbol}: 1주 가격(${price})이 주문금액(${this.config.orderAmountKrw})보다 큼 — 스킵`);
-      return price;
+      return false;
     }
     const amountKrw = price * quantity;
 
@@ -135,18 +137,16 @@ export class Bot {
     if (!verdict.ok) {
       log.info(`${symbol}: 매수 거부 — ${verdict.reason}`);
       this.executor.recordRejection({ symbol, side: "BUY", quantity, price, rsi }, verdict.reason ?? "거부");
-      return price;
+      return false;
     }
 
     await this.executor.execute({ symbol, side: "BUY", quantity, price, rsi });
-    return price;
+    return this.tracker.hasBought(symbol);
   }
 
-  /** 매도 처리. 사용한 현재가 반환. */
-  private async handleSell(symbol: string, rsi: number, quantity: number): Promise<number | null> {
-    const price = (await this.api.getPrice(symbol)) ?? 0;
+  /** 매도 처리. */
+  private async handleSell(symbol: string, rsi: number, price: number, quantity: number): Promise<void> {
     await this.executor.execute({ symbol, side: "SELL", quantity, price, rsi });
-    return price || null;
   }
 
   /** 실패해도 사이클을 계속 진행하기 위한 안전 래퍼. */
