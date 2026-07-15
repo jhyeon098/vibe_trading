@@ -1,6 +1,8 @@
 import { loadConfig } from "./config.js";
 import { log } from "./logger.js";
 import { Bot } from "./bot.js";
+import { DashboardStore } from "./web/store.js";
+import { startWebServer } from "./web/server.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,7 +25,25 @@ async function main(): Promise<void> {
     log.info("드라이런 모드: 주문은 로그로만 기록됩니다.");
   }
 
-  const bot = new Bot(config);
+  const store = new DashboardStore({
+    mode: config.liveTrading ? "LIVE" : "DRY-RUN",
+    startedAt: new Date().toISOString(),
+    config: {
+      rsiPeriod: config.rsiPeriod,
+      buyThreshold: config.rsiBuyThreshold,
+      sellThreshold: config.rsiSellThreshold,
+      orderAmountKrw: config.orderAmountKrw,
+      maxOrderKrw: config.maxOrderKrw,
+      maxDailyBuyKrw: config.maxDailyBuyKrw,
+      maxPositions: config.maxPositions,
+      watchCount: config.watchCount,
+    },
+  });
+
+  const bot = new Bot(config, store);
+
+  // 웹 대시보드 (단발 실행에서는 띄우지 않음)
+  const server = once ? null : startWebServer(store, config.webPort);
 
   let stopping = false;
   const stop = (sig: string) => {
@@ -43,6 +63,7 @@ async function main(): Promise<void> {
     await sleep(config.cycleIntervalSec * 1000);
   } while (!stopping);
 
+  server?.close();
   log.info("vibestock 종료");
 }
 

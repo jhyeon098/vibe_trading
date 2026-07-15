@@ -19,6 +19,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     maxOrderKrw: 100_000,
     maxDailyBuyKrw: 500_000,
     maxPositions: 5,
+    webPort: 3000,
     ...overrides,
   };
 }

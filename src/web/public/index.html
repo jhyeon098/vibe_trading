@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vibestock 대시보드</title>
+    <style>
+      :root {
+        --bg: #0d1017;
+        --panel: #161b24;
+        --panel-2: #1d2430;
+        --line: #262e3a;
+        --text: #e6e9ef;
+        --muted: #8b94a3;
+        --buy: #2dd4bf;
+        --sell: #fbbf24;
+        --hold: #94a3b8;
+        --neutral: #4b5563;
+        --live: #ef4444;
+        --dry: #3b82f6;
+        --danger: #f87171;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif;
+      }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+      header {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 20px;
+      }
+      h1 { font-size: 20px; margin: 0; letter-spacing: -0.3px; }
+      .badge {
+        font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+        text-transform: uppercase; letter-spacing: 0.5px;
+      }
+      .badge.live { background: rgba(239,68,68,.15); color: var(--live); border: 1px solid rgba(239,68,68,.4); }
+      .badge.dry { background: rgba(59,130,246,.15); color: var(--dry); border: 1px solid rgba(59,130,246,.4); }
+      .meta { color: var(--muted); font-size: 13px; margin-left: auto; text-align: right; }
+      .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+      .dot.on { background: #22c55e; } .dot.off { background: var(--danger); } .dot.unk { background: var(--muted); }
+
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 22px; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+      .card .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+      .card .value { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+      .card .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+      .bar { height: 6px; background: var(--panel-2); border-radius: 4px; margin-top: 10px; overflow: hidden; }
+      .bar > span { display: block; height: 100%; background: var(--buy); }
+
+      section h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.6px; }
+      table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background: var(--panel-2); }
+      tr:last-child td { border-bottom: none; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+      .meter { position: relative; height: 18px; background: var(--panel-2); border-radius: 4px; min-width: 160px; }
+      .meter > .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+      .meter > .tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: rgba(255,255,255,.18); }
+
+      .sig { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+      .sig.BUY { background: rgba(45,212,191,.16); color: var(--buy); }
+      .sig.SELL { background: rgba(251,191,36,.16); color: var(--sell); }
+      .sig.HOLD { background: rgba(148,163,184,.14); color: #94a3b8; }
+      .sig.SKIP { background: rgba(75,85,99,.2); color: var(--muted); }
+
+      .held { font-size: 11px; color: var(--buy); border: 1px solid rgba(45,212,191,.4); padding: 1px 6px; border-radius: 6px; }
+
+      .events { list-style: none; padding: 0; margin: 0; }
+      .events li { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+      .events li:first-child { border-radius: 12px 12px 0 0; }
+      .events li:last-child { border-bottom: none; border-radius: 0 0 12px 12px; }
+      .events .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+      .ev-side.BUY { color: var(--buy); font-weight: 700; }
+      .ev-side.SELL { color: var(--sell); font-weight: 700; }
+      .st { margin-left: auto; font-size: 12px; }
+      .st.placed, .st.sent { color: #22c55e; }
+      .st.rejected { color: var(--muted); }
+      .st.failed { color: var(--danger); }
+      .empty { color: var(--muted); padding: 16px 12px; }
+      .mt { margin-top: 26px; }
+      footer { color: var(--muted); font-size: 12px; margin-top: 28px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>📈 vibestock</h1>
+        <span id="mode" class="badge dry">DRY-RUN</span>
+        <span id="market"><span class="dot unk"></span>시장</span>
+        <div class="meta">
+          <div id="cycle">사이클 0회</div>
+          <div id="lastCycle">-</div>
+        </div>
+      </header>
+
+      <div class="cards">
+        <div class="card">
+          <div class="label">당일 매수 누계</div>
+          <div class="value" id="bought">-</div>
+          <div class="sub" id="dailyLimit">일일 한도 -</div>
+          <div class="bar"><span id="boughtBar" style="width:0%"></span></div>
+        </div>
+        <div class="card">
+          <div class="label">가용 현금</div>
+          <div class="value" id="cash">-</div>
+        </div>
+        <div class="card">
+          <div class="label">보유 종목</div>
+          <div class="value" id="positions">-</div>
+          <div class="sub" id="posLimit">최대 -</div>
+        </div>
+        <div class="card">
+          <div class="label">전략</div>
+          <div class="value" id="strategy">RSI</div>
+          <div class="sub" id="thresholds">-</div>
+        </div>
+      </div>
+
+      <section>
+        <h2>감시 종목 (RSI 낮은 순 = 매수 후보 상단)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>종목</th>
+              <th style="width:200px">RSI</th>
+              <th class="num">RSI값</th>
+              <th>신호</th>
+              <th class="num">현재가</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr><td colspan="5" class="empty">아직 데이터 없음 — 첫 사이클 대기 중…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="mt">
+        <h2>최근 주문 이벤트</h2>
+        <ul class="events" id="events">
+          <li class="empty">아직 이벤트 없음</li>
+        </ul>
+      </section>
+
+      <footer>3초마다 자동 갱신 · vibestock 대시보드</footer>
+    </div>
+
+    <script>
+      const won = (n) => (n == null ? "-" : "₩" + Math.round(n).toLocaleString("ko-KR"));
+      const fmtTime = (iso) => { if (!iso) return "-"; const d = new Date(iso); return d.toLocaleString("ko-KR", { hour12: false }); };
+      const fmtHM = (iso) => { const d = new Date(iso); return d.toLocaleTimeString("ko-KR", { hour12: false }); };
+
+      function rsiColor(rsi, buyT, sellT) {
+        if (rsi == null) return "var(--neutral)";
+        if (rsi <= buyT) return "var(--buy)";
+        if (rsi >= sellT) return "var(--sell)";
+        return "var(--neutral)";
+      }
+
+      async function refresh() {
+        let s;
+        try { s = await (await fetch("/api/state", { cache: "no-store" })).json(); }
+        catch { return; }
+
+        const modeEl = document.getElementById("mode");
+        modeEl.textContent = s.mode;
+        modeEl.className = "badge " + (s.mode === "LIVE" ? "live" : "dry");
+
+        const mk = document.getElementById("market");
+        const state = s.marketOpen === true ? ["on", "개장"] : s.marketOpen === false ? ["off", "폐장"] : ["unk", "상태 미상"];
+        mk.innerHTML = '<span class="dot ' + state[0] + '"></span>' + state[1];
+
+        document.getElementById("cycle").textContent = "사이클 " + s.cycleCount + "회" + (s.running ? " · 실행중" : "");
+        document.getElementById("lastCycle").textContent = "마지막: " + fmtTime(s.lastCycleAt);
+
+        const c = s.config;
+        document.getElementById("bought").textContent = won(s.boughtKrw);
+        document.getElementById("dailyLimit").textContent = "일일 한도 " + won(c.maxDailyBuyKrw);
+        document.getElementById("boughtBar").style.width = Math.min(100, (s.boughtKrw / c.maxDailyBuyKrw) * 100) + "%";
+        document.getElementById("cash").textContent = won(s.buyingPower);
+        document.getElementById("positions").textContent = s.holdings.length + " 종목";
+        document.getElementById("posLimit").textContent = "최대 " + c.maxPositions + " 종목";
+        document.getElementById("thresholds").textContent =
+          "≤" + c.buyThreshold + " 매수 / ≥" + c.sellThreshold + " 매도 · 신호당 " + won(c.orderAmountKrw);
+
+        const rows = [...s.rows].sort((a, b) => {
+          if (a.rsi == null) return 1; if (b.rsi == null) return -1; return a.rsi - b.rsi;
+        });
+        const tbody = document.getElementById("rows");
+        if (rows.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">감시 종목 없음</td></tr>';
+        } else {
+          tbody.innerHTML = rows.map((r) => {
+            const col = rsiColor(r.rsi, c.buyThreshold, c.sellThreshold);
+            const pct = r.rsi == null ? 0 : Math.max(0, Math.min(100, r.rsi));
+            const meter =
+              '<div class="meter"><div class="fill" style="width:' + pct + '%;background:' + col + '"></div>' +
+              '<div class="tick" style="left:' + c.buyThreshold + '%"></div>' +
+              '<div class="tick" style="left:' + c.sellThreshold + '%"></div></div>';
+            const rsiVal = r.rsi == null ? "-" : r.rsi.toFixed(1);
+            const held = r.held ? ' <span class="held">보유</span>' : "";
+            return "<tr><td><strong>" + r.symbol + "</strong>" + held + "</td>" +
+              "<td>" + meter + "</td>" +
+              '<td class="num" style="color:' + col + '">' + rsiVal + "</td>" +
+              '<td><span class="sig ' + r.signal + '">' + r.signal + "</span></td>" +
+              '<td class="num">' + (r.price == null ? "-" : "₩" + r.price.toLocaleString("ko-KR")) + "</td></tr>";
+          }).join("");
+        }
+
+        const ev = document.getElementById("events");
+        if (!s.events.length) {
+          ev.innerHTML = '<li class="empty">아직 이벤트 없음</li>';
+        } else {
+          ev.innerHTML = s.events.map((e) => {
+            const statusKo = { placed: "기록(드라이런)", sent: "전송됨", failed: "실패", rejected: "거부" }[e.status] || e.status;
+            const reason = e.reason ? " · " + e.reason : "";
+            return "<li><span class='t'>" + fmtHM(e.time) + "</span>" +
+              "<span class='ev-side " + e.side + "'>" + e.side + "</span>" +
+              "<span>" + e.symbol + " ×" + e.quantity + " @₩" + e.price.toLocaleString("ko-KR") + " (" + won(e.amountKrw) + ")</span>" +
+              "<span class='st " + e.status + "'>" + statusKo + reason + "</span></li>";
+          }).join("");
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>

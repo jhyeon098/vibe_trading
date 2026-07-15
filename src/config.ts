@@ -24,6 +24,9 @@ export interface Config {
   maxOrderKrw: number;
   maxDailyBuyKrw: number;
   maxPositions: number;
+
+  // 웹 대시보드
+  webPort: number;
 }
 
 function num(name: string, fallback: number): number {
@@ -69,6 +72,8 @@ export function loadConfig(): Config {
     maxOrderKrw: num("MAX_ORDER_KRW", 100_000),
     maxDailyBuyKrw: num("MAX_DAILY_BUY_KRW", 500_000),
     maxPositions: num("MAX_POSITIONS", 5),
+
+    webPort: num("WEB_PORT", 3000),
   };
 
   if (config.rsiBuyThreshold >= config.rsiSellThreshold) {
