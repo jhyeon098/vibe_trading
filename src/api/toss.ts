@@ -13,8 +13,8 @@ export class TossApi {
     private readonly config: Config,
   ) {}
 
-  /** 거래대금 상위 종목 (심볼 + 랭킹 응답에 담긴 현재가). */
-  async getTopStocks(): Promise<{ symbol: string; price: number | null }[]> {
+  /** 거래대금 상위 종목 (심볼 + 종목명 + 랭킹 응답에 담긴 현재가). */
+  async getTopStocks(): Promise<{ symbol: string; name: string | null; price: number | null }[]> {
     const data = await this.client.get<unknown>("/api/v1/rankings", {
       query: {
         type: "MARKET_TRADING_AMOUNT",
@@ -25,18 +25,40 @@ export class TossApi {
       },
     });
     const rows = asArray(pick(unwrap(data), ["rankings", "items", "data"]));
-    const out: { symbol: string; price: number | null }[] = [];
+    const out: { symbol: string; name: string | null; price: number | null }[] = [];
     for (const row of rows) {
       const sym = pickString(row, ["symbol", "code", "stockCode", "shortCode", "ticker"]);
       if (!sym) continue;
+      const name = pickString(row, [
+        "name", "korName", "koreanName", "stockName", "companyName", "shortName", "krName",
+      ]);
       // price 는 { lastPrice } 중첩 객체 또는 평면 필드일 수 있음
       const priceObj = pick(row, ["price"]);
       const price =
         pickNumber(priceObj, ["lastPrice", "price", "close"]) ??
         pickNumber(row, ["lastPrice", "price", "close", "tradePrice"]);
-      out.push({ symbol: sym, price });
+      out.push({ symbol: sym, name, price });
     }
     return out.slice(0, this.config.watchCount);
+  }
+
+  /** 심볼 목록 → 종목명 맵. (/api/v1/stocks, symbols 콤마구분 배치) */
+  async getStockNames(symbols: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (symbols.length === 0) return map;
+    const data = await this.client.get<unknown>("/api/v1/stocks", {
+      query: { symbols: symbols.join(",") },
+    });
+    const root = unwrap(data);
+    const rows = Array.isArray(root)
+      ? (root as Record<string, unknown>[])
+      : asArray(pick(root, ["stocks", "items", "data"]));
+    for (const row of rows) {
+      const sym = pickString(row, ["symbol", "code", "stockCode", "shortCode"]);
+      const name = pickString(row, ["name", "korName", "koreanName", "stockName", "companyName"]);
+      if (sym && name) map.set(sym, name);
+    }
+    return map;
   }
 
   /** 일봉 종가 배열(과거→현재 순). */
@@ -109,12 +131,16 @@ export class TossApi {
     ]);
   }
 
-  /** KRX 정규장 개장 여부. 판단 불가하면 null. */
+  /** KRX 정규장 개장 여부. 휴장일이면 false, 판단 불가하면 null. */
   async isKrMarketOpen(): Promise<boolean | null> {
     try {
       const data = await this.client.get<unknown>("/api/v1/market-calendar/KR");
       const today = pick(unwrap(data), ["today"]);
-      const regular = pick(pick(today, ["integrated"]), ["regularMarket"]);
+      if (!today || typeof today !== "object") return null;
+      // 주말/공휴일은 integrated 가 null → 휴장 확정
+      const integrated = pick(today, ["integrated"]);
+      if (integrated === null || integrated === undefined) return false;
+      const regular = pick(integrated, ["regularMarket"]);
       const start = pickTimestamp(regular, ["startTime"]);
       const end = pickTimestamp(regular, ["endTime"]);
       if (start === null || end === null) return null;

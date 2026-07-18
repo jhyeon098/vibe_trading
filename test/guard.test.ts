@@ -13,11 +13,24 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     rsiPeriod: 14,
     rsiBuyThreshold: 30,
     rsiSellThreshold: 70,
+    strategyMode: "composite",
+    newsEnabled: true,
+    newsLookbackDays: 7,
+    newsTtlMin: 15,
+    weightRsi: 0.5,
+    weightNews: 0.3,
+    weightMa: 0.2,
+    buyScoreThreshold: 0.5,
+    sellScoreThreshold: -0.5,
+    highGuardPct: 0.8,
+    reboundConfirm: true,
     watchCount: 20,
     cycleIntervalSec: 60,
     orderAmountKrw: 100_000,
     maxOrderKrw: 100_000,
     maxDailyBuyKrw: 500_000,
+    maxWeeklyBuyKrw: 200_000,
+    maxDailyBuyCount: 1,
     maxPositions: 5,
     webPort: 3000,
     ...overrides,
@@ -28,8 +41,16 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
 class FakeTracker {
   private bought = new Map<string, number>();
   private _total = 0;
+  private _week = 0;
+  private _count = 0;
   get boughtKrw() {
     return this._total;
+  }
+  get weeklyBoughtKrw() {
+    return this._week;
+  }
+  get dailyBuyCount() {
+    return this._count;
   }
   hasBought(s: string) {
     return this.bought.has(s);
@@ -37,6 +58,8 @@ class FakeTracker {
   recordBuy(s: string, a: number) {
     this.bought.set(s, a);
     this._total += a;
+    this._week += a;
+    this._count += 1;
   }
 }
 
@@ -68,9 +91,29 @@ test("중복 매수 거부", () => {
 test("일일 한도 초과 거부", () => {
   const t = new FakeTracker();
   t.recordBuy("A", 450_000);
-  const g = guardWith(makeConfig(), t);
+  // 횟수/주간 한도에 먼저 걸리지 않도록 넉넉히 열어 일일 금액 한도만 검증
+  const g = guardWith(makeConfig({ maxDailyBuyCount: 10, maxWeeklyBuyKrw: 10_000_000 }), t);
   const r = g.checkBuy({ symbol: "B", amountKrw: 90_000, positionCount: 1, buyingPowerKrw: 1_000_000 });
   assert.equal(r.ok, false);
+});
+
+test("하루 매수 횟수 한도(1회) 도달 시 거부", () => {
+  const t = new FakeTracker();
+  t.recordBuy("A", 50_000); // 오늘 1회 매수
+  const g = guardWith(makeConfig(), t); // maxDailyBuyCount 기본 1
+  const r = g.checkBuy({ symbol: "B", amountKrw: 50_000, positionCount: 1, buyingPowerKrw: 1_000_000 });
+  assert.equal(r.ok, false);
+  assert.match(r.reason ?? "", /하루 매수 횟수/);
+});
+
+test("주간 한도(20만원) 초과 거부", () => {
+  const t = new FakeTracker();
+  t.recordBuy("A", 150_000); // 이번 주 누계 15만
+  // 횟수 한도에 먼저 걸리지 않도록 열어 주간 금액만 검증
+  const g = guardWith(makeConfig({ maxDailyBuyCount: 10 }), t);
+  const r = g.checkBuy({ symbol: "B", amountKrw: 90_000, positionCount: 1, buyingPowerKrw: 1_000_000 });
+  assert.equal(r.ok, false); // 15만 + 9만 = 24만 > 20만
+  assert.match(r.reason ?? "", /주간 매수 한도/);
 });
 
 test("최대 보유 종목 수 도달 시 거부", () => {

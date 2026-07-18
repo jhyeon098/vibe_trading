@@ -6,6 +6,7 @@ import type { DashboardStore } from "../web/store.js";
 
 export interface OrderPlan {
   symbol: string;
+  name: string;
   side: "BUY" | "SELL";
   quantity: number;
   /** 판단 근거 가격(원) */
@@ -28,7 +29,8 @@ export class Executor {
   async execute(plan: OrderPlan): Promise<void> {
     const est = plan.price * plan.quantity;
     const mode = this.config.liveTrading ? "LIVE" : "DRY-RUN";
-    const tag = `${plan.side} ${plan.symbol} x${plan.quantity} @${plan.price} (≈${est.toLocaleString()}원, RSI=${plan.rsi.toFixed(1)})`;
+    const label = plan.name ? `${plan.name}(${plan.symbol})` : plan.symbol;
+    const tag = `${plan.side} ${label} x${plan.quantity} @${plan.price} (≈${est.toLocaleString()}원, RSI=${plan.rsi.toFixed(1)})`;
 
     if (!this.config.liveTrading) {
       log.order(`[DRY-RUN] ${tag}`);
@@ -71,6 +73,7 @@ export class Executor {
       time: new Date().toISOString(),
       side: plan.side,
       symbol: plan.symbol,
+      name: plan.name || plan.symbol,
       quantity: plan.quantity,
       price: plan.price,
       amountKrw,

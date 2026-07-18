@@ -69,6 +69,18 @@
       .sig.SKIP { background: rgba(75,85,99,.2); color: var(--muted); }
 
       .held { font-size: 11px; color: var(--buy); border: 1px solid rgba(45,212,191,.4); padding: 1px 6px; border-radius: 6px; }
+      .code { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; margin-left: 6px; }
+      .news { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+      .news.pos { background: rgba(45,212,191,.16); color: var(--buy); }
+      .news.neg { background: rgba(248,113,113,.16); color: var(--danger); }
+      .news.neu { background: rgba(148,163,184,.14); color: #94a3b8; }
+      .kw { display: inline-block; color: var(--muted); font-size: 11px; background: var(--panel-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; margin: 2px 3px 0 0; }
+      .note { color: var(--muted); font-size: 11px; margin-top: 4px; }
+      .maval { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      .ma { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 5px; margin-top: 3px; }
+      .ma.bull { background: rgba(45,212,191,.16); color: var(--buy); }
+      .ma.bear { background: rgba(248,113,113,.16); color: var(--danger); }
+      .ma.mix { background: rgba(148,163,184,.14); color: #94a3b8; }
 
       .events { list-style: none; padding: 0; margin: 0; }
       .events li { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13px; }
@@ -106,6 +118,9 @@
           <div class="value" id="bought">-</div>
           <div class="sub" id="dailyLimit">일일 한도 -</div>
           <div class="bar"><span id="boughtBar" style="width:0%"></span></div>
+          <div class="sub" id="weekly" style="margin-top:8px">주간 -</div>
+          <div class="bar"><span id="weeklyBar" style="width:0%;background:var(--sell)"></span></div>
+          <div class="sub" id="dailyCount" style="margin-top:8px">오늘 매수 -</div>
         </div>
         <div class="card">
           <div class="label">가용 현금</div>
@@ -124,19 +139,22 @@
       </div>
 
       <section>
-        <h2>감시 종목 (RSI 낮은 순 = 매수 후보 상단)</h2>
+        <h2 id="rowsTitle">감시 종목 (매수 후보 상단)</h2>
         <table>
           <thead>
             <tr>
               <th>종목</th>
-              <th style="width:200px">RSI</th>
+              <th style="width:180px">RSI</th>
               <th class="num">RSI값</th>
+              <th id="newsHead" style="display:none">뉴스 / 키워드</th>
+              <th class="num" id="scoreHead" style="display:none">종합점수</th>
               <th>신호</th>
               <th class="num">현재가</th>
+              <th class="num">MA 20 / 60</th>
             </tr>
           </thead>
           <tbody id="rows">
-            <tr><td colspan="5" class="empty">아직 데이터 없음 — 첫 사이클 대기 중…</td></tr>
+            <tr><td colspan="8" class="empty">아직 데이터 없음 — 첫 사이클 대기 중…</td></tr>
           </tbody>
         </table>
       </section>
@@ -153,6 +171,7 @@
 
     <script>
       const won = (n) => (n == null ? "-" : "₩" + Math.round(n).toLocaleString("ko-KR"));
+      const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       const fmtTime = (iso) => { if (!iso) return "-"; const d = new Date(iso); return d.toLocaleString("ko-KR", { hour12: false }); };
       const fmtHM = (iso) => { const d = new Date(iso); return d.toLocaleTimeString("ko-KR", { hour12: false }); };
 
@@ -188,21 +207,41 @@
         document.getElementById("lastCycle").textContent = "마지막: " + fmtTime(s.lastCycleAt);
 
         const c = s.config;
+        const composite = c.strategyMode === "composite";
         document.getElementById("bought").textContent = won(s.boughtKrw);
         document.getElementById("dailyLimit").textContent = "일일 한도 " + won(c.maxDailyBuyKrw);
         document.getElementById("boughtBar").style.width = Math.min(100, (s.boughtKrw / c.maxDailyBuyKrw) * 100) + "%";
+        document.getElementById("weekly").textContent = "주간 " + won(s.weeklyBoughtKrw) + " / " + won(c.maxWeeklyBuyKrw);
+        document.getElementById("weeklyBar").style.width = Math.min(100, (s.weeklyBoughtKrw / c.maxWeeklyBuyKrw) * 100) + "%";
+        document.getElementById("dailyCount").textContent = "오늘 매수 " + s.dailyBuyCount + " / " + c.maxDailyBuyCount + "회";
         document.getElementById("cash").textContent = won(s.buyingPower);
         document.getElementById("positions").textContent = s.holdings.length + " 종목";
         document.getElementById("posLimit").textContent = "최대 " + c.maxPositions + " 종목";
-        document.getElementById("thresholds").textContent =
-          "≤" + c.buyThreshold + " 매수 / ≥" + c.sellThreshold + " 매도 · 신호당 " + won(c.orderAmountKrw);
+        document.getElementById("strategy").textContent = composite ? "RSI + 뉴스 + 이평" : "RSI";
+        document.getElementById("thresholds").textContent = composite
+          ? "가중치 RSI " + c.weightRsi + " / 뉴스 " + c.weightNews + " / 추세 " + c.weightMa + " · 매수≥" + c.buyScore + " 매도≤" + c.sellScore
+          : "≤" + c.buyThreshold + " 매수 / ≥" + c.sellThreshold + " 매도 · 신호당 " + won(c.orderAmountKrw);
 
+        // composite 모드에서만 뉴스/종합점수 컬럼 노출
+        document.getElementById("newsHead").style.display = composite ? "" : "none";
+        document.getElementById("scoreHead").style.display = composite ? "" : "none";
+        document.getElementById("rowsTitle").textContent = composite
+          ? "감시 종목 (종합점수 높은 순 = 매수 후보 상단)"
+          : "감시 종목 (RSI 낮은 순 = 매수 후보 상단)";
+
+        // 정렬: composite 는 종합점수 내림차순, RSI 단독은 RSI 오름차순
         const rows = [...s.rows].sort((a, b) => {
+          if (composite) {
+            const sa = a.score == null ? -Infinity : a.score;
+            const sb = b.score == null ? -Infinity : b.score;
+            return sb - sa;
+          }
           if (a.rsi == null) return 1; if (b.rsi == null) return -1; return a.rsi - b.rsi;
         });
         const tbody = document.getElementById("rows");
+        const colspan = composite ? 8 : 6;
         if (rows.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" class="empty">감시 종목 없음</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="empty">감시 종목 없음</td></tr>';
         } else {
           tbody.innerHTML = rows.map((r) => {
             const col = rsiColor(r.rsi, c.buyThreshold, c.sellThreshold);
@@ -213,11 +252,44 @@
               '<div class="tick" style="left:' + c.sellThreshold + '%"></div></div>';
             const rsiVal = r.rsi == null ? "-" : r.rsi.toFixed(1);
             const held = r.held ? ' <span class="held">보유</span>' : "";
-            return "<tr><td><strong>" + r.symbol + "</strong>" + held + "</td>" +
+            const nameCell = "<strong>" + esc(r.name || r.symbol) + "</strong>" +
+              (r.name && r.name !== r.symbol ? '<span class="code">' + esc(r.symbol) + "</span>" : "") + held;
+
+            let newsCell = "";
+            let scoreCell = "";
+            if (composite) {
+              const nc = r.newsLabel === "긍정" ? "pos" : r.newsLabel === "부정" ? "neg" : "neu";
+              const label = r.newsLabel || "중립";
+              const ns = r.newsScore == null ? "" : " " + r.newsScore.toFixed(2);
+              const kw = (r.keywords || []).map((k) => '<span class="kw">' + esc(k) + "</span>").join("");
+              newsCell = '<td><span class="news ' + nc + '">' + label + ns + "</span><div>" + kw + "</div></td>";
+              const scoreCol = r.score == null ? "var(--neutral)" : r.score >= c.buyScore ? "var(--buy)" : r.score <= c.sellScore ? "var(--sell)" : "var(--neutral)";
+              scoreCell = '<td class="num" style="color:' + scoreCol + '">' + (r.score == null ? "-" : r.score.toFixed(2)) + "</td>";
+            }
+
+            const note = r.note ? '<div class="note">' + esc(r.note) + "</div>" : "";
+
+            // 이동평균 셀: MA20/MA60 값 + 정배열(현재가>20>60)/역배열 표시
+            let maCell = '<td class="num">-</td>';
+            if (r.ma20 != null || r.ma60 != null) {
+              const m20 = r.ma20 == null ? "-" : "₩" + Math.round(r.ma20).toLocaleString("ko-KR");
+              const m60 = r.ma60 == null ? "-" : "₩" + Math.round(r.ma60).toLocaleString("ko-KR");
+              let tag = "";
+              if (r.price != null && r.ma20 != null && r.ma60 != null) {
+                if (r.price >= r.ma20 && r.ma20 >= r.ma60) tag = '<span class="ma bull">정배열</span>';
+                else if (r.price <= r.ma20 && r.ma20 <= r.ma60) tag = '<span class="ma bear">역배열</span>';
+                else tag = '<span class="ma mix">혼조</span>';
+              }
+              maCell = '<td class="num"><div class="maval">20 ' + m20 + "</div><div class=\"maval\">60 " + m60 + "</div>" + tag + "</td>";
+            }
+
+            return "<tr><td>" + nameCell + "</td>" +
               "<td>" + meter + "</td>" +
               '<td class="num" style="color:' + col + '">' + rsiVal + "</td>" +
-              '<td><span class="sig ' + r.signal + '">' + r.signal + "</span></td>" +
-              '<td class="num">' + (r.price == null ? "-" : "₩" + r.price.toLocaleString("ko-KR")) + "</td></tr>";
+              newsCell + scoreCell +
+              '<td><span class="sig ' + r.signal + '">' + r.signal + "</span>" + note + "</td>" +
+              '<td class="num">' + (r.price == null ? "-" : "₩" + r.price.toLocaleString("ko-KR")) + "</td>" +
+              maCell + "</tr>";
           }).join("");
         }
 
@@ -230,7 +302,7 @@
             const reason = e.reason ? " · " + e.reason : "";
             return "<li><span class='t'>" + fmtHM(e.time) + "</span>" +
               "<span class='ev-side " + e.side + "'>" + e.side + "</span>" +
-              "<span>" + e.symbol + " ×" + e.quantity + " @₩" + e.price.toLocaleString("ko-KR") + " (" + won(e.amountKrw) + ")</span>" +
+              "<span>" + esc(e.name || e.symbol) + " ×" + e.quantity + " @₩" + e.price.toLocaleString("ko-KR") + " (" + won(e.amountKrw) + ")</span>" +
               "<span class='st " + e.status + "'>" + statusKo + reason + "</span></li>";
           }).join("");
         }

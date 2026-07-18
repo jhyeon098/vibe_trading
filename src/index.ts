@@ -12,10 +12,14 @@ async function main(): Promise<void> {
 
   log.info("vibestock 시작", {
     mode: config.liveTrading ? "LIVE(실주문)" : "DRY-RUN(시뮬레이션)",
+    strategy:
+      config.strategyMode === "composite"
+        ? `RSI+뉴스+이동평균 점수합산 (가중치 RSI ${config.weightRsi}/뉴스 ${config.weightNews}/추세 ${config.weightMa}, 매수≥${config.buyScoreThreshold}/매도≤${config.sellScoreThreshold})`
+        : "RSI 단독",
     watchCount: config.watchCount,
     rsi: `${config.rsiBuyThreshold}/${config.rsiSellThreshold} (기간 ${config.rsiPeriod})`,
     orderAmountKrw: config.orderAmountKrw,
-    limits: `주문 ${config.maxOrderKrw} / 일일 ${config.maxDailyBuyKrw} / 최대 ${config.maxPositions}종목`,
+    limits: `주문 ${config.maxOrderKrw} / 일일 ${config.maxDailyBuyKrw}(${config.maxDailyBuyCount}회) / 주간 ${config.maxWeeklyBuyKrw} / 최대 ${config.maxPositions}종목`,
     interval: `${config.cycleIntervalSec}s`,
   });
 
@@ -29,14 +33,22 @@ async function main(): Promise<void> {
     mode: config.liveTrading ? "LIVE" : "DRY-RUN",
     startedAt: new Date().toISOString(),
     config: {
+      strategyMode: config.strategyMode,
       rsiPeriod: config.rsiPeriod,
       buyThreshold: config.rsiBuyThreshold,
       sellThreshold: config.rsiSellThreshold,
       orderAmountKrw: config.orderAmountKrw,
       maxOrderKrw: config.maxOrderKrw,
       maxDailyBuyKrw: config.maxDailyBuyKrw,
+      maxWeeklyBuyKrw: config.maxWeeklyBuyKrw,
+      maxDailyBuyCount: config.maxDailyBuyCount,
       maxPositions: config.maxPositions,
       watchCount: config.watchCount,
+      weightRsi: config.weightRsi,
+      weightNews: config.weightNews,
+      weightMa: config.weightMa,
+      buyScore: config.buyScoreThreshold,
+      sellScore: config.sellScoreThreshold,
     },
   });
 

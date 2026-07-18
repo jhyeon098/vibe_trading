@@ -2,16 +2,28 @@ import type { Signal } from "../strategy/rsi.js";
 
 export interface SymbolRow {
   symbol: string;
+  name: string;
   rsi: number | null;
   signal: Signal | "SKIP";
   price: number | null;
   held: boolean;
+  /** 20일/60일 단순이동평균(원). 데이터 부족 시 null. */
+  ma20?: number | null;
+  ma60?: number | null;
+  /** composite 모드일 때만 채워지는 뉴스/점수 정보. */
+  newsScore?: number | null;
+  newsLabel?: string;
+  keywords?: string[];
+  score?: number | null;
+  /** 매수 보류 사유 등 부가 설명 (있으면 신호 옆에 표시). */
+  note?: string;
 }
 
 export interface OrderEvent {
   time: string;
   side: "BUY" | "SELL";
   symbol: string;
+  name: string;
   quantity: number;
   price: number;
   amountKrw: number;
@@ -30,16 +42,26 @@ export interface Snapshot {
   lastError: string | null;
   marketOpen: boolean | null;
   config: {
+    strategyMode: "rsi" | "composite";
     rsiPeriod: number;
     buyThreshold: number;
     sellThreshold: number;
     orderAmountKrw: number;
     maxOrderKrw: number;
     maxDailyBuyKrw: number;
+    maxWeeklyBuyKrw: number;
+    maxDailyBuyCount: number;
     maxPositions: number;
     watchCount: number;
+    weightRsi: number;
+    weightNews: number;
+    weightMa: number;
+    buyScore: number;
+    sellScore: number;
   };
   boughtKrw: number;
+  weeklyBoughtKrw: number;
+  dailyBuyCount: number;
   buyingPower: number | null;
   holdings: { symbol: string; quantity: number }[];
   rows: SymbolRow[];
@@ -61,6 +83,8 @@ export class DashboardStore {
       lastError: null,
       marketOpen: null,
       boughtKrw: 0,
+      weeklyBoughtKrw: 0,
+      dailyBuyCount: 0,
       buyingPower: null,
       holdings: [],
       rows: [],
@@ -80,6 +104,8 @@ export class DashboardStore {
   endCycle(patch: {
     marketOpen: boolean | null;
     boughtKrw: number;
+    weeklyBoughtKrw: number;
+    dailyBuyCount: number;
     buyingPower: number | null;
     holdings: { symbol: string; quantity: number }[];
     rows: SymbolRow[];
@@ -89,6 +115,8 @@ export class DashboardStore {
     this.snap.cycleCount++;
     this.snap.marketOpen = patch.marketOpen;
     this.snap.boughtKrw = patch.boughtKrw;
+    this.snap.weeklyBoughtKrw = patch.weeklyBoughtKrw;
+    this.snap.dailyBuyCount = patch.dailyBuyCount;
     this.snap.buyingPower = patch.buyingPower;
     this.snap.holdings = patch.holdings;
     this.snap.rows = patch.rows;

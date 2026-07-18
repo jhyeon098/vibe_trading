@@ -40,10 +40,22 @@ export class RiskGuard {
     if (this.tracker.hasBought(ctx.symbol)) {
       return { ok: false, reason: "당일 이미 매수한 종목(중복 방지)" };
     }
+    if (this.tracker.dailyBuyCount >= this.config.maxDailyBuyCount) {
+      return {
+        ok: false,
+        reason: `하루 매수 횟수 한도 도달 (${this.tracker.dailyBuyCount}/${this.config.maxDailyBuyCount}회)`,
+      };
+    }
     if (this.tracker.boughtKrw + ctx.amountKrw > this.config.maxDailyBuyKrw) {
       return {
         ok: false,
         reason: `일일 매수 한도 초과 (${this.tracker.boughtKrw}+${ctx.amountKrw} > ${this.config.maxDailyBuyKrw})`,
+      };
+    }
+    if (this.tracker.weeklyBoughtKrw + ctx.amountKrw > this.config.maxWeeklyBuyKrw) {
+      return {
+        ok: false,
+        reason: `주간 매수 한도 초과 (${this.tracker.weeklyBoughtKrw}+${ctx.amountKrw} > ${this.config.maxWeeklyBuyKrw})`,
       };
     }
     if (ctx.positionCount >= this.config.maxPositions) {
