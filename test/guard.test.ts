@@ -33,6 +33,9 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     maxDailyBuyCount: 1,
     maxPositions: 5,
     webPort: 3000,
+    webHost: "0.0.0.0",
+    dashboardUser: "",
+    dashboardPass: "",
     ...overrides,
   };
 }

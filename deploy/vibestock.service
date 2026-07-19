@@ -1,0 +1,22 @@
+[Unit]
+Description=vibestock 자동매매 봇 + 대시보드
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 아래 User/WorkingDirectory/경로를 서버 환경에 맞게 수정하세요.
+User=vibestock
+WorkingDirectory=/home/vibestock/vibestock
+# .env 파일에서 환경변수 로드 (dotenv 도 읽지만 systemd 레벨에서도 로드)
+EnvironmentFile=/home/vibestock/vibestock/.env
+# npm 대신 tsx 를 직접 실행 (npm start 와 동일). node/npx 절대경로는 `which npx` 로 확인.
+ExecStart=/usr/bin/npx tsx src/index.ts
+Restart=always
+RestartSec=10
+# 로그는 journald 로 (journalctl -u vibestock -f)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

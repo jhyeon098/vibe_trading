@@ -50,6 +50,11 @@ export interface Config {
 
   // 웹 대시보드
   webPort: number;
+  /** 리스닝 호스트. 리버스 프록시 뒤라면 "127.0.0.1" 권장. 기본 0.0.0.0(외부 노출). */
+  webHost: string;
+  /** basic auth 사용자/비밀번호. 둘 다 있으면 대시보드 접근 시 인증 요구. */
+  dashboardUser: string;
+  dashboardPass: string;
 }
 
 function num(name: string, fallback: number): number {
@@ -130,6 +135,9 @@ export function loadConfig(): Config {
     maxPositions: num("MAX_POSITIONS", 5),
 
     webPort: num("WEB_PORT", 3000),
+    webHost: process.env.WEB_HOST?.trim() || "0.0.0.0",
+    dashboardUser: process.env.DASHBOARD_USER?.trim() ?? "",
+    dashboardPass: process.env.DASHBOARD_PASS ?? "",
   };
 
   if (config.rsiBuyThreshold >= config.rsiSellThreshold) {

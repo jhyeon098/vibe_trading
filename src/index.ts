@@ -55,7 +55,17 @@ async function main(): Promise<void> {
   const bot = new Bot(config, store);
 
   // 웹 대시보드 (단발 실행에서는 띄우지 않음)
-  const server = once ? null : startWebServer(store, config.webPort);
+  const server = once
+    ? null
+    : startWebServer(store, {
+        port: config.webPort,
+        host: config.webHost,
+        user: config.dashboardUser,
+        pass: config.dashboardPass,
+      });
+  if (!once && config.webHost === "0.0.0.0" && !(config.dashboardUser && config.dashboardPass)) {
+    log.warn("⚠️  대시보드가 인증 없이 외부에 노출됩니다. DASHBOARD_USER/DASHBOARD_PASS 설정을 권장합니다.");
+  }
 
   let stopping = false;
   const stop = (sig: string) => {

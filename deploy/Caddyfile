@@ -1,0 +1,19 @@
+# Caddy 리버스 프록시 — 자동 HTTPS(Let's Encrypt) + 대시보드 프록시
+#
+# 사용법:
+#   1) 도메인이 이 서버 IP 를 가리키게 A 레코드 설정 (무료 도메인은 DuckDNS 등)
+#   2) 아래 your-domain 을 실제 도메인으로 교체
+#   3) .env 에 WEB_HOST=127.0.0.1 로 두어 봇은 로컬에서만 리스닝(외부는 Caddy만)
+#   4) sudo caddy run --config ./deploy/Caddyfile  (또는 systemd 로 caddy 서비스화)
+#
+# Caddy 가 basic auth 도 처리할 수 있지만, 여기선 앱 자체 DASHBOARD_USER/PASS 를 쓰고
+# Caddy 는 HTTPS 종단 + 프록시만 담당합니다. (이중으로 걸고 싶으면 basicauth 블록 주석 해제)
+
+your-domain.example.com {
+	reverse_proxy 127.0.0.1:3000
+
+	# 선택: Caddy 레벨 basic auth (해시는 `caddy hash-password` 로 생성)
+	# basicauth {
+	# 	admin JDJhJDE0J...해시...
+	# }
+}
